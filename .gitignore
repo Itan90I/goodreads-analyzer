@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.db
+sampled_reviews.csv
+book_reviews.db
+books.db
+archive.zip
+Book_Details.csv
+explore.py
+*.bat
+*.vbs
+*.png
+.vscode/

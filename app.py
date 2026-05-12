@@ -304,9 +304,24 @@ elif option in ["智能问答 (AI)", "AI Q&A"]:
                     st.pyplot(fig)
                     plt.close(fig)
 
+
 # ----------------- 底部信息 -----------------
 st.sidebar.markdown("---")
-st.sidebar.info(
-    "项目：高级Python程序设计期末作品\n"
-    "数据来源：Goodreads 书籍评论数据集"
+st.sidebar.markdown(
+    """
+    <div style="
+        background-color: #d1ecf1;
+        border: 2px solid #17a2b8;
+        border-radius: 10px;
+        padding: 15px 18px;
+        font-size: 14px;
+        line-height: 1.7;
+        color: #0c5460;
+    ">
+        <b>项目：</b> 高级Python程序设计期末大作业<br>
+        <b>作者：</b> 张益僮 &emsp; <b>学号：</b> 2025201757<br>
+        <b>数据来源：</b> Goodreads 书籍评论数据集
+    </div>
+    """,
+    unsafe_allow_html=True
 )

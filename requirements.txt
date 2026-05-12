@@ -1,0 +1,6 @@
+pandas
+matplotlib
+streamlit
+openai
+python-dotenv
+wordcloud

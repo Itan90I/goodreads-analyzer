@@ -40,17 +40,13 @@ def analysis_top_rated_books(df):
 
     fig, ax = plt.subplots(figsize=(10, 6), facecolor=COLORS['bg'])
     ax.set_facecolor(COLORS['bg'])
-
-    # 渐变色条
     colors = [COLORS['blue']] * 10
     bars = ax.barh(top_books['book_title'], top_books['average_rating'], color=colors, height=0.6)
-
     ax.set_xlabel('Average Rating', fontsize=12, fontweight='bold')
-    ax.set_title('Top 10 最高评分书籍', fontsize=14, fontweight='bold', pad=15)
+    ax.set_title('Top 10 Highest Rated Books', fontsize=14, fontweight='bold', pad=15)
     ax.invert_yaxis()
     ax.tick_params(axis='y', labelsize=10)
     ax.set_xlim(4.5, 5.1)
-
     for bar, val in zip(bars, top_books['average_rating']):
         ax.text(val + 0.01, bar.get_y() + bar.get_height()/2, f'{val:.2f}',
                 va='center', fontsize=10, fontweight='bold', color='#333333')
@@ -60,25 +56,19 @@ def analysis_top_rated_books(df):
 # ---- 分析2：月度趋势 ----
 def analysis_monthly_trend(df):
     monthly = df.set_index('review_date').resample('ME').size().reset_index(name='count')
-    # 过滤掉评论数过少的月份（可选）
     monthly = monthly[monthly['count'] > 0]
 
     fig, ax = plt.subplots(figsize=(14, 5), facecolor=COLORS['bg'])
     ax.set_facecolor(COLORS['bg'])
-
     ax.plot(monthly['review_date'], monthly['count'], color=COLORS['red'], linewidth=2.5, marker='o', markersize=6)
     ax.fill_between(monthly['review_date'], 0, monthly['count'], color=COLORS['red'], alpha=0.1)
-
     ax.set_xlabel('Year', fontsize=12, fontweight='bold')
     ax.set_ylabel('Number of Reviews', fontsize=12, fontweight='bold')
-    ax.set_title('月度评论量趋势', fontsize=14, fontweight='bold', pad=15)
+    ax.set_title('Monthly Review Trend', fontsize=14, fontweight='bold', pad=15)
     ax.tick_params(axis='x', rotation=45, labelsize=10)
-
-    # 每隔6个月显示一个标签，避免拥挤
     import matplotlib.dates as mdates
     ax.xaxis.set_major_locator(mdates.MonthLocator(interval=6))
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
-
     plt.tight_layout()
     return monthly, fig
 
@@ -88,22 +78,18 @@ def analysis_rating_likes(df):
 
     fig, ax = plt.subplots(figsize=(8, 6), facecolor=COLORS['bg'])
     ax.set_facecolor(COLORS['bg'])
-
     ratings_data = [valid_df[valid_df['rating'] == r]['likes'] for r in range(1, 6)]
-    bp = ax.boxplot(ratings_data, labels=['1星', '2星', '3星', '4星', '5星'],
+    bp = ax.boxplot(ratings_data, labels=['1 Star', '2 Stars', '3 Stars', '4 Stars', '5 Stars'],
                     patch_artist=True, widths=0.5,
                     medianprops={'color': 'black', 'linewidth': 1.5},
                     whiskerprops={'color': COLORS['grey']})
-
-    # 每个箱子不同颜色
     box_colors = [COLORS['red'], COLORS['orange'], COLORS['green'], COLORS['cyan'], COLORS['blue']]
     for patch, color in zip(bp['boxes'], box_colors):
         patch.set_facecolor(color)
         patch.set_alpha(0.8)
-
     ax.set_xlabel('Rating', fontsize=12, fontweight='bold')
     ax.set_ylabel('Likes', fontsize=12, fontweight='bold')
-    ax.set_title('不同评分等级的点赞数分布', fontsize=14, fontweight='bold', pad=15)
+    ax.set_title('Likes Distribution by Rating', fontsize=14, fontweight='bold', pad=15)
     plt.tight_layout()
     stats = valid_df.groupby('rating')['likes'].describe()
     return stats, fig
@@ -119,13 +105,11 @@ def analysis_top_authors(df):
 
     fig, ax = plt.subplots(figsize=(10, 6), facecolor=COLORS['bg'])
     ax.set_facecolor(COLORS['bg'])
-
     bars = ax.barh(top_authors['author'], top_authors['avg_likes'], color=COLORS['green'], height=0.6)
     ax.set_xlabel('Average Likes', fontsize=12, fontweight='bold')
-    ax.set_title('Top 10 高赞作者 (评论数≥5)', fontsize=14, fontweight='bold', pad=15)
+    ax.set_title('Top 10 Authors by Average Likes (>=5 reviews)', fontsize=14, fontweight='bold', pad=15)
     ax.invert_yaxis()
     ax.tick_params(axis='y', labelsize=10)
-
     for bar, val in zip(bars, top_authors['avg_likes']):
         ax.text(val + 10, bar.get_y() + bar.get_height()/2, f'{val:.1f}',
                 va='center', fontsize=10, fontweight='bold', color='#333333')
@@ -140,20 +124,16 @@ def analysis_length_rating(df):
 
     fig, ax = plt.subplots(figsize=(9, 6), facecolor=COLORS['bg'])
     ax.set_facecolor(COLORS['bg'])
-
-    # 散点图
     ax.scatter(df_plot['content_length'], df_plot['rating'], alpha=0.3, color=COLORS['purple'])
-    # 趋势线
     z = pd.DataFrame({'length': df_plot['content_length'], 'rating': df_plot['rating']})
     if len(z) > 1:
         coeffs = np.polyfit(z['length'], z['rating'], 1)
         poly = np.poly1d(coeffs)
         x_line = np.linspace(z['length'].min(), z['length'].max(), 100)
         ax.plot(x_line, poly(x_line), color=COLORS['red'], linewidth=2, label='Trend')
-
     ax.set_xlabel('Review Length (words)', fontsize=12, fontweight='bold')
     ax.set_ylabel('Rating', fontsize=12, fontweight='bold')
-    ax.set_title('评论字数与评分的关系', fontsize=14, fontweight='bold', pad=15)
+    ax.set_title('Review Length vs Rating', fontsize=14, fontweight='bold', pad=15)
     ax.legend()
     plt.tight_layout()
     return z.describe(), fig
@@ -256,34 +236,29 @@ def analysis_book_compare_radar(df, book1_title, book2_title):
 from wordcloud import WordCloud
 
 def analysis_review_wordcloud(df, book_title=None, max_words=100):
-    """
-    生成评论内容的词云图
-    可选：指定某一本书，或全部评论
-    """
+    from wordcloud import WordCloud
     if book_title:
         text_data = df[df['book_title'] == book_title]['review_content']
         if text_data.empty:
-            return None, "未找到该书的评论。"
-        title = f"《{book_title[:30]}》"
+            return None, "No reviews found for this book."
+        title_str = f'Review Keywords for "{book_title[:30]}"'
     else:
         text_data = df['review_content']
-        title = "全部评论"
-    
-    # 合并所有文本
+        title_str = 'Review Keywords (All Books)'
+
     all_text = " ".join(text_data.dropna().astype(str).tolist())
     if not all_text.strip():
-        return None, "没有可用的评论文本。"
-    
-    # 生成词云
+        return None, "No review text available."
+
     wordcloud = WordCloud(width=800, height=400, background_color='white',
                           max_words=max_words, colormap='viridis',
                           stopwords={'the', 'and', 'is', 'in', 'it', 'of', 'to', 'a', 'I', 'this', 'was', 'that', 'for', 'with', 'on', 'as', 'at', 'by', 'an', 'be', 'from', 'or', 'but', 'not', 'are', 'we', 'you', 'he', 'she', 'they', 'his', 'her', 'my', 'me', 'so', 'if', 'no', 'all', 'just', 'like', 'about', 'have', 'been', 'has', 'who', 'can', 'than', 'then', 'also', 'very', 'one', 'only', 'some', 'when', 'its'})
     wordcloud.generate(all_text)
-    
+
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.imshow(wordcloud, interpolation='bilinear')
     ax.axis('off')
-    ax.set_title(f'{title}评论关键词云', fontsize=16, fontweight='bold', pad=20)
+    ax.set_title(title_str, fontsize=16, fontweight='bold', pad=20)
     plt.tight_layout()
     return fig, None
 

@@ -1,6 +1,6 @@
 """
 主程序：智能问数 Web 应用 (Goodreads 书籍评论分析)
-基于 Streamlit，支持中英文双语切换
+基于 Streamlit，支持中英文双语切换 + 自定义数据上传（鲁棒性测试）
 """
 import streamlit as st
 import pandas as pd
@@ -44,42 +44,103 @@ LANG = st.sidebar.selectbox(
     ["中文", "English"]
 )
 
-# ----------------- 缓存数据加载 -----------------
+# ----------------- 自定义数据上传（20%鲁棒性测试核心）-----------------
+st.sidebar.markdown("---")
+st.sidebar.subheader("上传自定义数据" if LANG == '中文' else "Upload Custom Data")
+uploaded_file = st.sidebar.file_uploader(
+    "选择 CSV 文件（列名需与示例数据一致）" if LANG == '中文' else "Choose a CSV file (columns must match sample)",
+    type=["csv"]
+)
+
+# 定义系统必需的列名（你所有分析用到的列）
+REQUIRED_COLS = [
+    'book_title', 'author', 'genres',
+    'average_rating', 'num_reviews', 'num_pages',
+    'rating', 'likes', 'followers',
+    'review_content', 'review_date'
+]
+
+def validate_and_load(uploaded_file):
+    """验证上传文件并返回干净的 DataFrame 与错误消息"""
+    try:
+        df_up = pd.read_csv(uploaded_file)
+    except Exception as e:
+        return None, f"无法读取文件：{str(e)}"
+
+    # 行数检查
+    if len(df_up) < 50:
+        return None, "数据行数太少（至少需要50行）。请上传至少包含50条记录的数据。"
+
+    # 列名检查
+    missing = [col for col in REQUIRED_COLS if col not in df_up.columns]
+    if missing:
+        return None, f"缺少必要列：{', '.join(missing)}。\n请确保数据包含以下列：{', '.join(REQUIRED_COLS)}"
+
+    # 基础清洗：日期和数值统一处理
+    try:
+        if 'review_date' in df_up.columns:
+            df_up['review_date'] = pd.to_datetime(df_up['review_date'], errors='coerce')
+        for col in ['rating', 'likes', 'followers', 'average_rating', 'num_reviews', 'num_pages']:
+            if col in df_up.columns:
+                df_up[col] = pd.to_numeric(df_up[col], errors='coerce')
+        # 过滤掉完全没有评论内容的行
+        if 'review_content' in df_up.columns:
+            df_up = df_up[df_up['review_content'].notna()]
+        return df_up, None
+    except Exception as e:
+        return None, f"数据清洗失败：{str(e)}"
+
+# 默认数据缓存加载（与原来一致）
 @st.cache_data
-def load_data(lang='en'):
-    """根据语言加载对应数据文件"""
+def load_default_data(lang='en'):
     if lang == '中文':
         path = "cleaned_reviews_zh.csv"
         if not os.path.exists(path):
-            st.warning("中文数据文件未生成，请先运行 src/translate_local.py，当前使用英文数据")
+            st.warning("中文数据文件未生成，当前使用英文数据")
             path = "cleaned_reviews.csv"
     else:
         path = "cleaned_reviews.csv"
-
     if not os.path.exists(path):
         st.error(f"未找到 {path}，请先运行 preprocess.py")
         st.stop()
-
     df = pd.read_csv(path)
     df['review_date'] = pd.to_datetime(df['review_date'])
     return df
 
-df = load_data('zh' if LANG == '中文' else 'en')
-
-# 根据语言决定显示的列名
-if LANG == '中文':
-    TITLE_COL = 'book_title_zh' if 'book_title_zh' in df.columns else 'book_title'
-    AUTHOR_COL = 'author_zh' if 'author_zh' in df.columns else 'author'
-    GENRE_COL = 'genres_zh' if 'genres_zh' in df.columns else 'genres'
+# 实际使用的数据源
+use_custom = False
+if uploaded_file is not None:
+    custom_df, error_msg = validate_and_load(uploaded_file)
+    if error_msg:
+        st.sidebar.error(error_msg)
+        df = load_default_data('zh' if LANG == '中文' else 'en')
+    else:
+        df = custom_df
+        use_custom = True
+        st.sidebar.success(f"已加载自定义数据，共 {len(df)} 行")
 else:
+    df = load_default_data('zh' if LANG == '中文' else 'en')
+
+# 根据是否为自定义数据决定双语列
+if use_custom:
+    # 自定义数据没有中文翻译列，直接使用英文列名
     TITLE_COL = 'book_title'
     AUTHOR_COL = 'author'
     GENRE_COL = 'genres'
-
-# 建立中文书名到原始英文书名的映射（用于词云/雷达图内部转换）
-title_to_original = None
-if 'book_title_zh' in df.columns and 'book_title' in df.columns:
-    title_to_original = dict(zip(df['book_title_zh'], df['book_title']))
+    title_to_original = None
+else:
+    # 默认数据的中英文切换
+    if LANG == '中文':
+        TITLE_COL = 'book_title_zh' if 'book_title_zh' in df.columns else 'book_title'
+        AUTHOR_COL = 'author_zh' if 'author_zh' in df.columns else 'author'
+        GENRE_COL = 'genres_zh' if 'genres_zh' in df.columns else 'genres'
+    else:
+        TITLE_COL = 'book_title'
+        AUTHOR_COL = 'author'
+        GENRE_COL = 'genres'
+    title_to_original = None
+    if 'book_title_zh' in df.columns and 'book_title' in df.columns:
+        title_to_original = dict(zip(df['book_title_zh'], df['book_title']))
 
 def get_original_title(display_title):
     if title_to_original and display_title in title_to_original:
@@ -87,6 +148,8 @@ def get_original_title(display_title):
     return display_title
 
 # ----------------- 侧边栏导航 -----------------
+
+st.sidebar.markdown("---")
 st.sidebar.title("Goodreads 分析")
 st.sidebar.markdown(f"已加载 {len(df):,} 条评论数据")
 
@@ -117,7 +180,13 @@ else:
         "AI Q&A"
     ]
 
-option = st.sidebar.radio("选择功能" if LANG == '中文' else "Select", options)
+# 用 expander 包裹导航，点击可折叠
+with st.sidebar.expander("选择功能" if LANG == '中文' else "Select", expanded=True):
+    option = st.radio(
+        "选择功能" if LANG == '中文' else "Select",
+        options,
+        label_visibility="collapsed"   # 隐藏 radio 自带的标题，避免重复
+    )
 
 # ----------------- 主标题 -----------------
 if LANG == '中文':
@@ -245,7 +314,6 @@ elif option in ["书籍对比图", "Book vs Book Radar"]:
         st.subheader("两本书多维对比")
     else:
         st.subheader("Book vs Book Radar Chart")
-    # 显示用 TITLE_COL，转换回原始英文书名进行分析
     display_books = sorted(df[TITLE_COL].dropna().unique().tolist())
     book1_display = st.selectbox("第一本书" if LANG=='中文' else "Book 1", display_books)
     book2_display = st.selectbox("第二本书" if LANG=='中文' else "Book 2", display_books)
@@ -303,7 +371,6 @@ elif option in ["智能问答 (AI)", "AI Q&A"]:
                 if fig:
                     st.pyplot(fig)
                     plt.close(fig)
-
 
 # ----------------- 底部信息 -----------------
 st.sidebar.markdown("---")

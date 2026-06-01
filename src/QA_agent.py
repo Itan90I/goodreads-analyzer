@@ -177,3 +177,52 @@ def ask_free_text(question: str, df: pd.DataFrame):
         return response.choices[0].message.content
     except Exception as e:
         return f"❌ 对话失败：{str(e)}"
+def ask_deep_analysis(question: str, df: pd.DataFrame):
+    """
+    自由深度分析：把数据基本统计信息发给 AI，回答用户任意问题
+    返回：文字回答（不强制要求图表）
+    """
+    if not client:
+        return "❌ 智能问答未配置：请设置 DEEPSEEK_API_KEY"
+
+    # 构建数据快照（只传必要信息，避免 token 超限）
+    cols_info = []
+    for col in df.columns[:15]:   # 最多描述 15 列
+        try:
+            sample = df[col].dropna().head(3).tolist()
+        except Exception:
+            sample = []
+        cols_info.append(f"- {col} ({df[col].dtype}), 样例: {sample}")
+
+    stats_info = f"""
+数据行数: {len(df)}
+各列缺失值数量:
+{df.isnull().sum().to_string()}
+
+数值列统计:
+{df.describe(include='number').to_string()}
+"""
+
+    system_prompt = f"""你是一个数据分析专家。用户上传了一组数据，下面是数据的基本信息：
+
+列名与类型:
+{chr(10).join(cols_info)}
+
+统计摘要:
+{stats_info}
+
+请根据用户的问题，用清晰的中文给出分析结论。如果问题适合用图表展示，请用 Markdown 代码块给出 Python 绘图代码（使用 matplotlib，数据变量名为 df）。"""
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question}
+            ],
+            temperature=0.5,
+            max_tokens=1200
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"❌ 分析出错：{str(e)}"

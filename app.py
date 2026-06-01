@@ -23,9 +23,9 @@ from analysis import (
     analysis_review_wordcloud
 )
 
-# 尝试导入智能问答模块
+# 尝试导入智能问答模块（含深度洞察）
 try:
-    from QA_agent import ask_ai
+    from QA_agent import ask_ai, ask_deep_analysis
     qa_available = True
 except Exception as e:
     qa_available = False
@@ -44,7 +44,7 @@ LANG = st.sidebar.selectbox(
     ["中文", "English"]
 )
 
-# ----------------- 自定义数据上传（20%鲁棒性测试核心）-----------------
+# ----------------- 自定义数据上传（鲁棒性测试）-----------------
 st.sidebar.markdown("---")
 st.sidebar.subheader("上传自定义数据" if LANG == '中文' else "Upload Custom Data")
 uploaded_file = st.sidebar.file_uploader(
@@ -52,7 +52,7 @@ uploaded_file = st.sidebar.file_uploader(
     type=["csv", "xlsx", "json"]
 )
 
-# 定义系统必需的列名（你所有分析用到的列）
+# 定义系统必需的列名
 REQUIRED_COLS = [
     'book_title', 'author', 'genres',
     'average_rating', 'num_reviews', 'num_pages',
@@ -67,11 +67,10 @@ def validate_and_load(uploaded_file):
     """
     filename = uploaded_file.name.lower()
     df_up = None
-    
+
     # ---- 1. 按扩展名尝试读取文件 ----
     try:
         if filename.endswith('.csv'):
-            # 自动尝试多种编码
             for enc in ['utf-8', 'utf-8-sig', 'gbk', 'latin1']:
                 try:
                     df_up = pd.read_csv(uploaded_file, encoding=enc)
@@ -80,27 +79,21 @@ def validate_and_load(uploaded_file):
                     continue
             if df_up is None:
                 return None, "无法读取 CSV 文件，请检查文件编码（建议保存为 UTF-8）。"
-        
         elif filename.endswith(('.xlsx', '.xls')):
             df_up = pd.read_excel(uploaded_file, engine='openpyxl')
-        
         elif filename.endswith('.json'):
             df_up = pd.read_json(uploaded_file)
-        
         else:
-            # 未知扩展名也试着用 CSV 读一次
             try:
                 df_up = pd.read_csv(uploaded_file)
             except Exception:
                 return None, "不支持的文件类型。请上传 CSV、Excel 或 JSON 文件。"
-    
     except Exception as e:
         return None, f"文件读取失败：{str(e)}。请检查文件是否损坏或格式是否正确。"
 
     # ---- 2. 基础验证 ----
     if df_up is None or df_up.empty:
         return None, "文件内容为空，请上传包含有效数据的文件。"
-
     if len(df_up) < 50:
         return None, "数据行数太少（至少需要 50 行），请上传包含更多记录的数据。"
 
@@ -124,7 +117,7 @@ def validate_and_load(uploaded_file):
     except Exception as e:
         return None, f"数据清洗过程中出现错误：{str(e)}"
 
-# 默认数据缓存加载（与原来一致）
+# 默认数据缓存加载
 @st.cache_data
 def load_default_data(lang='en'):
     if lang == '中文':
@@ -151,19 +144,17 @@ if uploaded_file is not None:
     else:
         df = custom_df
         use_custom = True
-        st.sidebar.success(f"已加载自定义数据，共 {len(df)} 行")
+        st.sidebar.success(f"已加载自定义数据，共 {len(df)} 行" if LANG == '中文' else f"Custom data loaded, {len(df)} rows total")
 else:
     df = load_default_data('zh' if LANG == '中文' else 'en')
 
 # 根据是否为自定义数据决定双语列
 if use_custom:
-    # 自定义数据没有中文翻译列，直接使用英文列名
     TITLE_COL = 'book_title'
     AUTHOR_COL = 'author'
     GENRE_COL = 'genres'
     title_to_original = None
 else:
-    # 默认数据的中英文切换
     if LANG == '中文':
         TITLE_COL = 'book_title_zh' if 'book_title_zh' in df.columns else 'book_title'
         AUTHOR_COL = 'author_zh' if 'author_zh' in df.columns else 'author'
@@ -181,46 +172,51 @@ def get_original_title(display_title):
         return title_to_original[display_title]
     return display_title
 
-# ----------------- 侧边栏导航 -----------------
+# ----------------- 初始化当前页面状态 -----------------
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = "智能问答 (AI)" if LANG == '中文' else "AI Q&A"
 
+# ----------------- 侧边栏导航 -----------------
 st.sidebar.markdown("---")
 st.sidebar.title("Goodreads 分析")
-st.sidebar.markdown(f"已加载 {len(df):,} 条评论数据")
+st.sidebar.markdown(f"已加载 {len(df):,} 条评论数据" if LANG == '中文' else f"Loaded {len(df):,} reviews")
 
-if LANG == '中文':
-    options = [
-        "数据预览",
-        "书籍评分 Top 10",
-        "月度评论趋势",
-        "评分与点赞分布",
-        "作者平均点赞排行",
-        "评论字数 vs 评分",
-        "作者 & 类型查书",
-        "书籍对比图",
-        "评论词云",
-        "智能问答 (AI)"
-    ]
-else:
-    options = [
-        "Data Preview",
-        "Top 10 Rated Books",
-        "Monthly Review Trend",
-        "Rating vs Likes",
-        "Top Authors by Likes",
-        "Review Length vs Rating",
-        "Find Books by Author / Genre",
-        "Book vs Book Radar",
-        "Review Word Cloud",
-        "AI Q&A"
-    ]
+# 核心入口：AI 智能问数
+st.sidebar.markdown("###  AI 智能问数" if LANG == '中文' else "### 🤖 AI Smart Query")
+if st.sidebar.button(" 打开 AI 问答" if LANG == '中文' else "🧠 Open AI Q&A", use_container_width=True,
+                     type="primary" if st.session_state.current_page in ["智能问答 (AI)", "AI Q&A"] else "secondary"):
+    st.session_state.current_page = "智能问答 (AI)" if LANG == '中文' else "AI Q&A"
 
-# 用 expander 包裹导航，点击可折叠
-with st.sidebar.expander("选择功能" if LANG == '中文' else "Select", expanded=True):
-    option = st.radio(
-        "选择功能" if LANG == '中文' else "Select",
-        options,
-        label_visibility="collapsed"   # 隐藏 radio 自带的标题，避免重复
-    )
+# 预设分析功能（折叠）
+with st.sidebar.expander(" 预设分析功能" if LANG == '中文' else "📊 Preset Analysis", expanded=False):
+    if LANG == '中文':
+        preset_options = [
+            "数据预览",
+            "书籍评分 Top 10",
+            "月度评论趋势",
+            "评分与点赞分布",
+            "作者平均点赞排行",
+            "评论字数 vs 评分",
+            "作者 & 类型查书",
+            "书籍对比雷达图",
+            "评论词云"
+        ]
+    else:
+        preset_options = [
+            "Data Preview",
+            "Top 10 Rated Books",
+            "Monthly Review Trend",
+            "Rating vs Likes",
+            "Top Authors by Likes",
+            "Review Length vs Rating",
+            "Find Books by Author / Genre",
+            "Book vs Book Radar",
+            "Review Word Cloud"
+        ]
+    for opt in preset_options:
+        if st.button(opt, use_container_width=True,
+                     type="primary" if st.session_state.current_page == opt else "secondary"):
+            st.session_state.current_page = opt
 
 # ----------------- 主标题 -----------------
 if LANG == '中文':
@@ -228,21 +224,22 @@ if LANG == '中文':
 else:
     st.title("Goodreads Book Review Analysis System")
 
-# ----------------- 各功能实现 -----------------
+# ----------------- 各功能实现（统一使用 current_page 导航） -----------------
+page = st.session_state.current_page
+
 # 数据预览
-if option in ["数据预览", "Data Preview"]:
+if page in ["数据预览", "Data Preview"]:
     if LANG == '中文':
         st.subheader("清洗后数据预览")
     else:
         st.subheader("Cleaned Data Preview")
-
     display_cols = [TITLE_COL, AUTHOR_COL, GENRE_COL, 'rating', 'likes', 'review_date', 'review_content']
     available_cols = [c for c in display_cols if c in df.columns]
     st.dataframe(df[available_cols].head(50))
     st.caption(f"{'数据集共' if LANG=='中文' else 'Total'} {len(df)} {'行' if LANG=='中文' else 'rows'}, {len(df.columns)} {'列' if LANG=='中文' else 'columns'}, {'展示前 50 行' if LANG=='中文' else 'showing first 50 rows'}")
 
 # 书籍 Top 10
-elif option in ["书籍评分 Top 10", "Top 10 Rated Books"]:
+elif page in ["书籍评分 Top 10", "Top 10 Rated Books"]:
     if LANG == '中文':
         st.subheader("平均评分最高的 10 本书")
     else:
@@ -256,7 +253,7 @@ elif option in ["书籍评分 Top 10", "Top 10 Rated Books"]:
                                         'average_rating': '均分' if LANG=='中文' else 'Avg Rating'}))
 
 # 月度趋势
-elif option in ["月度评论趋势", "Monthly Review Trend"]:
+elif page in ["月度评论趋势", "Monthly Review Trend"]:
     if LANG == '中文':
         st.subheader("评论数量月度变化趋势")
     else:
@@ -267,7 +264,7 @@ elif option in ["月度评论趋势", "Monthly Review Trend"]:
                                         'count': '评论数' if LANG=='中文' else 'Reviews'}))
 
 # 评分与点赞
-elif option in ["评分与点赞分布", "Rating vs Likes"]:
+elif page in ["评分与点赞分布", "Rating vs Likes"]:
     if LANG == '中文':
         st.subheader("不同评分等级下的点赞数箱线图")
     else:
@@ -277,7 +274,7 @@ elif option in ["评分与点赞分布", "Rating vs Likes"]:
     st.dataframe(result)
 
 # 作者排行
-elif option in ["作者平均点赞排行", "Top Authors by Likes"]:
+elif page in ["作者平均点赞排行", "Top Authors by Likes"]:
     if LANG == '中文':
         st.subheader("平均点赞最高的作者 Top 10 (评论数>=5)")
     else:
@@ -292,7 +289,7 @@ elif option in ["作者平均点赞排行", "Top Authors by Likes"]:
                                         'review_count': '评论数' if LANG=='中文' else 'Reviews'}))
 
 # 评论长度 vs 评分
-elif option in ["评论字数 vs 评分", "Review Length vs Rating"]:
+elif page in ["评论字数 vs 评分", "Review Length vs Rating"]:
     if LANG == '中文':
         st.subheader("评论长度与评分的关系")
     else:
@@ -303,20 +300,18 @@ elif option in ["评论字数 vs 评分", "Review Length vs Rating"]:
     st.dataframe(result)
 
 # 作者 & 类型查书
-elif option in ["作者 & 类型查书", "Find Books by Author / Genre"]:
+elif page in ["作者 & 类型查书", "Find Books by Author / Genre"]:
     if LANG == '中文':
         st.subheader("作者 & 类型查书")
         st.markdown("输入**作者名**或**类型标签**，查看该作者/类型的全部书籍（按评分排序）。")
     else:
         st.subheader("Find Books by Author / Genre")
-        st.markdown("Enter an author name or genre to view their books, sorted by rating.")
-
+        st.markdown("Enter an **author name** or **genre tag** to view all their books, sorted by rating.")
     col1, col2 = st.columns(2)
     with col1:
-        author_input = st.text_input("作者名" if LANG == '中文' else "Author", placeholder="如 Orwell")
+        author_input = st.text_input("作者名" if LANG == '中文' else "Author", placeholder="如 Orwell" if LANG == '中文' else "e.g. Orwell")
     with col2:
-        genre_input = st.text_input("类型" if LANG == '中文' else "Genre", placeholder="如 Fantasy")
-
+        genre_input = st.text_input("类型" if LANG == '中文' else "Genre", placeholder="如 Fantasy" if LANG == '中文' else "e.g. Fantasy")
     if st.button("查找" if LANG == '中文' else "Search"):
         if not author_input and not genre_input:
             st.warning("请至少输入作者名或类型。" if LANG == '中文' else "Please enter at least one search term.")
@@ -343,7 +338,7 @@ elif option in ["作者 & 类型查书", "Find Books by Author / Genre"]:
                     }))
 
 # 雷达图
-elif option in ["书籍对比图", "Book vs Book Radar"]:
+elif page in ["书籍对比雷达图", "Book vs Book Radar"]:
     if LANG == '中文':
         st.subheader("两本书多维对比")
     else:
@@ -357,7 +352,7 @@ elif option in ["书籍对比图", "Book vs Book Radar"]:
         else:
             book1_original = get_original_title(book1_display)
             book2_original = get_original_title(book2_display)
-            with st.spinner("绘制雷达图..."):
+            with st.spinner("绘制雷达图..." if LANG=='中文' else "Drawing radar chart..."):
                 comp_df, fig, msg = analysis_book_compare_radar(df, book1_original, book2_original)
                 if msg:
                     st.error(msg)
@@ -366,7 +361,7 @@ elif option in ["书籍对比图", "Book vs Book Radar"]:
                     st.dataframe(comp_df)
 
 # 词云
-elif option in ["评论词云", "Review Word Cloud"]:
+elif page in ["评论词云", "Review Word Cloud"]:
     if LANG == '中文':
         st.subheader("读者评论关键词云")
     else:
@@ -377,39 +372,62 @@ elif option in ["评论词云", "Review Word Cloud"]:
         book = None
     else:
         book = get_original_title(selected_book_display)
-    if st.button("生成词云"):
-        with st.spinner("分析评论关键词..."):
+    if st.button("生成词云" if LANG=='中文' else "Generate Word Cloud"):
+        with st.spinner("分析评论关键词..." if LANG=='中文' else "Analyzing review keywords..."):
             fig, msg = analysis_review_wordcloud(df, book_title=book)
             if msg:
                 st.error(msg)
             else:
                 st.pyplot(fig)
 
-# 智能问答
-elif option in ["智能问答 (AI)", "AI Q&A"]:
+# 智能问答（增强版）
+elif page in ["智能问答 (AI)", "AI Q&A"]:
     if LANG == '中文':
-        st.subheader("智能问数")
+        st.subheader(" 智能问数")
     else:
-        st.subheader("AI Q&A")
+        st.subheader(" AI Q&A")
     if not qa_available:
         st.error(f"智能问答模块不可用：{qa_error_msg}")
     else:
-        user_question = st.text_input(
-            "请输入您的问题" if LANG == '中文' else "Ask a question about the data",
-            placeholder="试试：评分最高的书有哪些？" if LANG == '中文' else "e.g. Which books have the highest ratings?"
+        analysis_mode = st.radio(
+            "选择分析模式" if LANG == '中文' else "Analysis Mode",
+            ["快速图表问答", "深度数据洞察"] if LANG == '中文' else ["Quick Chart Q&A", "Deep Data Insights"],
+            horizontal=True
         )
-        if user_question:
-            with st.spinner("AI 正在思考..." if LANG == '中文' else "AI thinking..."):
-                answer, fig = ask_ai(user_question, df)
-                st.markdown(answer)
-                if fig:
-                    st.pyplot(fig)
-                    plt.close(fig)
+        if analysis_mode in ["快速图表问答", "Quick Chart Q&A"]:
+            user_question = st.text_input(
+                "请输入您的问题" if LANG == '中文' else "Ask a question about the data",
+                placeholder="试试：评分最高的书有哪些？" if LANG == '中文' else "e.g. Which books have the highest ratings?"
+            )
+            if user_question:
+                with st.spinner("AI 正在思考..." if LANG == '中文' else "AI thinking..."):
+                    answer, fig = ask_ai(user_question, df)
+                    st.markdown(answer)
+                    if fig:
+                        st.pyplot(fig)
+                        plt.close(fig)
+        else:  # 深度数据洞察
+            st.markdown(
+                "在这里，您可以向 AI 提出任何关于数据的问题，AI 将基于数据统计信息给出深度分析。"
+                if LANG == '中文' else "Ask AI any question about the data. AI will provide deep analysis based on data statistics."
+            )
+            user_deep = st.text_area(
+                "输入你的问题" if LANG == '中文' else "Your question",
+                height=100,
+                placeholder="例如：这组数据中评分和点赞数有什么关系？哪个作者的作品最受欢迎？" if LANG == '中文' else "e.g. What is the relationship between rating and likes? Which author is the most popular?"
+            )
+            if st.button("开始分析" if LANG == '中文' else "Analyze", type="primary"):
+                if user_deep.strip():
+                    with st.spinner("AI 正在深度分析..." if LANG == '中文' else "AI deep analyzing..."):
+                        answer = ask_deep_analysis(user_deep, df)
+                        st.markdown(answer)
+                else:
+                    st.warning("请输入问题" if LANG == '中文' else "Please enter a question.")
 
 # ----------------- 底部信息 -----------------
 st.sidebar.markdown("---")
-st.sidebar.markdown(
-    """
+if LANG == '中文':
+    footer_html = """
     <div style="
         background-color: #d1ecf1;
         border: 2px solid #17a2b8;
@@ -423,6 +441,21 @@ st.sidebar.markdown(
         <b>作者：</b> 张益僮 &emsp; <b>学号：</b> 2025201757<br>
         <b>数据来源：</b> Goodreads 书籍评论数据集
     </div>
-    """,
-    unsafe_allow_html=True
-)
+    """
+else:
+    footer_html = """
+    <div style="
+        background-color: #d1ecf1;
+        border: 2px solid #17a2b8;
+        border-radius: 10px;
+        padding: 15px 18px;
+        font-size: 14px;
+        line-height: 1.7;
+        color: #0c5460;
+    ">
+        <b>Project:</b> Advanced Python Final Project<br>
+        <b>Author:</b> Zhang Yitong &emsp; <b>ID:</b> 2025201757<br>
+        <b>Data Source:</b> Goodreads Book Reviews Dataset
+    </div>
+    """
+st.sidebar.markdown(footer_html, unsafe_allow_html=True)

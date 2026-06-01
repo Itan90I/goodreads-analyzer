@@ -7,7 +7,7 @@
 
 ## 在线体验
 
-🔗 [https://itan90i-goodreads-analyzer.streamlit.app](https://itan90i-goodreads-analyzer.streamlit.app)
+🔗 [https://itan90i-goodreads-analyzer.streamlit.app](https://goodreads-analyzer-zytsfirstapp.streamlit.app/)
 
 > 注意：云端部署的智能问答功能未配置 API Key（保护额度），如需体验完整问答，请在本地运行。
 

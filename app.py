@@ -48,8 +48,8 @@ LANG = st.sidebar.selectbox(
 st.sidebar.markdown("---")
 st.sidebar.subheader("上传自定义数据" if LANG == '中文' else "Upload Custom Data")
 uploaded_file = st.sidebar.file_uploader(
-    "选择 CSV 文件（列名需与示例数据一致）" if LANG == '中文' else "Choose a CSV file (columns must match sample)",
-    type=["csv"]
+    "选择文件（支持 CSV / Excel / JSON）" if LANG == '中文' else "Choose a file (CSV / Excel / JSON)",
+    type=["csv", "xlsx", "json"]
 )
 
 # 定义系统必需的列名（你所有分析用到的列）
@@ -61,34 +61,68 @@ REQUIRED_COLS = [
 ]
 
 def validate_and_load(uploaded_file):
-    """验证上传文件并返回干净的 DataFrame 与错误消息"""
+    """
+    支持 CSV / Excel / JSON 多种格式，带完整的文件异常处理。
+    返回 (DataFrame, error_message)
+    """
+    filename = uploaded_file.name.lower()
+    df_up = None
+    
+    # ---- 1. 按扩展名尝试读取文件 ----
     try:
-        df_up = pd.read_csv(uploaded_file)
+        if filename.endswith('.csv'):
+            # 自动尝试多种编码
+            for enc in ['utf-8', 'utf-8-sig', 'gbk', 'latin1']:
+                try:
+                    df_up = pd.read_csv(uploaded_file, encoding=enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            if df_up is None:
+                return None, "无法读取 CSV 文件，请检查文件编码（建议保存为 UTF-8）。"
+        
+        elif filename.endswith(('.xlsx', '.xls')):
+            df_up = pd.read_excel(uploaded_file, engine='openpyxl')
+        
+        elif filename.endswith('.json'):
+            df_up = pd.read_json(uploaded_file)
+        
+        else:
+            # 未知扩展名也试着用 CSV 读一次
+            try:
+                df_up = pd.read_csv(uploaded_file)
+            except Exception:
+                return None, "不支持的文件类型。请上传 CSV、Excel 或 JSON 文件。"
+    
     except Exception as e:
-        return None, f"无法读取文件：{str(e)}"
+        return None, f"文件读取失败：{str(e)}。请检查文件是否损坏或格式是否正确。"
 
-    # 行数检查
+    # ---- 2. 基础验证 ----
+    if df_up is None or df_up.empty:
+        return None, "文件内容为空，请上传包含有效数据的文件。"
+
     if len(df_up) < 50:
-        return None, "数据行数太少（至少需要50行）。请上传至少包含50条记录的数据。"
+        return None, "数据行数太少（至少需要 50 行），请上传包含更多记录的数据。"
 
-    # 列名检查
+    # ---- 3. 列名验证 ----
     missing = [col for col in REQUIRED_COLS if col not in df_up.columns]
     if missing:
         return None, f"缺少必要列：{', '.join(missing)}。\n请确保数据包含以下列：{', '.join(REQUIRED_COLS)}"
 
-    # 基础清洗：日期和数值统一处理
+    # ---- 4. 数据清洗 ----
     try:
         if 'review_date' in df_up.columns:
             df_up['review_date'] = pd.to_datetime(df_up['review_date'], errors='coerce')
         for col in ['rating', 'likes', 'followers', 'average_rating', 'num_reviews', 'num_pages']:
             if col in df_up.columns:
                 df_up[col] = pd.to_numeric(df_up[col], errors='coerce')
-        # 过滤掉完全没有评论内容的行
         if 'review_content' in df_up.columns:
             df_up = df_up[df_up['review_content'].notna()]
+        if len(df_up) < 10:
+            return None, "数据清洗后可用记录不足（少于10条），请检查数据质量。"
         return df_up, None
     except Exception as e:
-        return None, f"数据清洗失败：{str(e)}"
+        return None, f"数据清洗过程中出现错误：{str(e)}"
 
 # 默认数据缓存加载（与原来一致）
 @st.cache_data
